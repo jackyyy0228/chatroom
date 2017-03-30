@@ -1,0 +1,191 @@
+<!doctype html>
+<html>
+
+<head>
+    <title>Ping chat</title>
+    <link rel="stylesheet" type="text/css" href="chat.css" />
+</head>
+
+<body>
+    <div id="header">
+        <div id="top1">
+            <img src="sakura.jpg" alt="Smiley face" height=100%>
+        </div>
+        <div id="top1">
+            <img src="chat-name.png" alt="Smiley face" height=70%>
+        </div>
+        <div id="top2">
+            <form>
+                <select>
+                    <option value="ch">Chinese</option>
+                    <option value="en">English</option>
+                    <option value="jp">Japanese</option>
+                    <option value="fr">French</option>
+                </select>
+            </form>
+        </div>
+        <div id="top3">
+            <h2 id="hello"></h2>
+        </div>
+    </div>
+    <div id="info">
+        <div id="c-list">
+            <p id="fr"> ---朋友列表--- </p>
+        </div>
+        <div id="c-name">
+            <p id="who"> Public</p>
+        </div>
+    </div>
+    <div id="middle">
+        <div id="sidebar">
+            <div class="smg">
+                <button id="public" onclick="clicked(this.id)"> <span>Public</span> </button>
+            </div>
+        </div>
+        <div id="bodymessage">
+            <div id="M">
+                <ul id="messages"></ul>
+            </div>
+            <div id="S">
+                <form action="">
+                    <input id="m" autocomplete="off" />
+                    <button>Send</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="http://code.jquery.com/jquery-1.11.1.js"></script>
+    <script>
+    var socket = io();
+    var message = [];
+    var username;
+    var groupChat = [];
+    var users = [];
+    var privateChat = [];
+    var nowpage = "public";
+
+    function login() {
+        username = prompt('請輸入你的名字 : ', '靖平');
+        socket.emit('add user', username);
+        document.getElementById("hello").innerHTML = "您好, " + username + "";
+    }
+
+    function addGroupChat(data) {
+        if (data.broadcast === true) { //群聊、broadcast
+            var li = $('<li id="bc"/>');
+            var span = $('<span>').text(data.msg);
+            li.append(span);
+            $('#messages').append(li);
+        } else { //群聊、nonbroadcast
+            var id = data.name === username ? "me" : "friend";
+            var msg = data.name + ' : ' + data.msg;
+            var li = $('<li id="' + id + '"/>');
+            var span = $('<span>').text(msg);
+            li.append(span);
+            $('#messages').append(li);
+        }
+        $("#bodymessage").scrollTop($("#bodymessage")[0].scrollHeight);
+    }
+
+    function addPrivateChat(data) {
+        var id = data.name === username ? "me" : "friend";
+        console.log(id);
+        var li = $('<li id="' + id + '"/>');
+        var span = $('<span>').text(data.msg);
+        li.append(span);
+        $('#messages').append(li);
+
+        $("#bodymessage").scrollTop($("#bodymessage")[0].scrollHeight);
+    }
+
+    function clicked(name) {
+        console.log("clicked : " + name);
+        if (nowpage != name) {
+            nowpage = name;
+            document.getElementById("who").innerHTML = nowpage;
+            $('#messages').empty();
+            if (nowpage === "public") {
+                for (var i = 0; i < groupChat.length; i++)
+                    addGroupChat(groupChat[i]);
+            } else {
+                for (var i = 0; i < privateChat.length; i++) {
+                    if (privateChat[i].name === nowpage)
+                        addPrivateChat(privateChat[i]);
+                    else if (privateChat[i].rcv === nowpage)
+                        addPrivateChat(privateChat[i]);
+                }
+            }
+        }
+    }
+
+    login();
+
+    $('form').submit(function() {
+        if (nowpage === "public") {
+            socket.emit('group chat message', $('#m').val());
+            $('#m').val('');
+            return false;
+        } else {
+            socket.emit('private chat message', nowpage, $('#m').val());
+            $('#m').val('');
+            return false;
+
+        }
+    });
+
+    socket.on('show private user', function(user) {
+        if (user.name != username) {
+            console.log(user.name + " is " + user.online);
+            var d = $('<div class="smg"/>');
+            var r = $('<button id="' + user.name + '" onclick="clicked(this.id)"/>');
+            var span = $('<span>').text(user.name);
+            if (user.online == true) {
+                var img = $('<img src="online.jpg" height="15px" float="left" id="_' + user.name + '"/>');
+                r.append(img);
+            } else {
+                var img = $('<img src="offline.jpg" height="15px" float="left" id="_' + user.name + '"/>');
+                r.append(img);
+            }
+            r.append(span);
+            d.append(r);
+            $("#sidebar").append(d);
+        }
+    });
+
+    socket.on('a user disconnect', function(name) {
+        if (name != username)
+            document.getElementById('_' + name).src = "offline.jpg";
+    });
+    socket.on('a user reconnect', function(name) {
+        if (name != username)
+            document.getElementById('_' + name).src = "online.jpg";
+    });
+
+    socket.on('type name again', function() {
+        username = prompt('你的名字已被使用！請輸入別的名字: ',
+            '哲平');
+        socket.emit('add user', username);
+        document.getElementById("hello").innerHTML = "Hello, " + username + "";
+    });
+    socket.on('group chat message', function(data) {
+        groupChat.push(data);
+        if (nowpage === "public") {
+            addGroupChat(data);
+        }
+    });
+    socket.on('private chat message', function(data) {
+        if (username === data.name) { //私聊、自己傳給別人的訊息
+            privateChat.push(data);
+            if (nowpage === data.rcv)
+                addPrivateChat(data);
+        } else if (username === data.rcv) { //私聊、別人傳給你的訊息
+            privateChat.push(data);
+            if (nowpage === data.name)
+                addPrivateChat(data);
+        }
+    });
+    </script>
+</body>
+
+</html>
